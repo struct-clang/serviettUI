@@ -28,8 +28,7 @@ struct State { bool pressed = false; bool animating = false; Uint32 animStart = 
 
 static std::vector<Descriptor> curDesc, nxtDesc;
 static std::vector<State> curStates, nxtStates;
-static std::function<void()> curViewFunc;
-static std::function<void()> nxtViewFunc;
+static std::function<void()> curViewFunc, nxtViewFunc;
 static bool animatingOverlay = false;
 static Uint32 overlayStart = 0;
 
@@ -63,6 +62,7 @@ void NewView(const std::function<void()>& viewFunc) {
         nxtDesc.clear();
         nxtViewFunc();
         if (nxtStates.size() != nxtDesc.size()) nxtStates.assign(nxtDesc.size(), State());
+        // рендерим в nextTarget
         SDL_SetRenderTarget(renderer, nextTarget);
         SDL_SetRenderDrawColor(renderer, 255,255,255,255);
         SDL_RenderClear(renderer);
@@ -92,6 +92,10 @@ void NewView(const std::function<void()>& viewFunc) {
             SDL_DestroyTexture(tex2[i]);
         }
         SDL_SetRenderTarget(renderer, nullptr);
+        // сразу делаем этот вид текущим
+        std::swap(currentTarget, nextTarget);
+        curViewFunc = nxtViewFunc;
+        curStates = nxtStates;
         animatingOverlay = true;
         overlayStart = SDL_GetTicks();
     }
@@ -107,7 +111,7 @@ void View(const std::function<void()>& viewFunc) {
     currentTarget = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH * SCALE, HEIGHT * SCALE);
     nextTarget    = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH * SCALE, HEIGHT * SCALE);
     SDL_SetTextureBlendMode(currentTarget, SDL_BLENDMODE_BLEND);
-    SDL_SetTextureBlendMode(nextTarget, SDL_BLENDMODE_BLEND);
+    SDL_SetTextureBlendMode(nextTarget,    SDL_BLENDMODE_BLEND);
     curViewFunc = viewFunc;
 
     bool running = true;
@@ -183,19 +187,18 @@ void View(const std::function<void()>& viewFunc) {
             float dt = float(SDL_GetTicks() - overlayStart) / ANIM_DURATION;
             float t = dt > 1 ? 1 : dt;
             float v = springValues[size_t(t * (springValues.size() - 1))];
-            if (dt >= 1) { animatingOverlay = false; curViewFunc = nxtViewFunc; }
-            int offCur = int(-0.5f * WIDTH * SCALE * v);
-            int offNext = int(WIDTH * SCALE * (1 - v));
-            SDL_Rect dstCur = {offCur, 0, WIDTH*SCALE, HEIGHT*SCALE};
-            SDL_SetTextureAlphaMod(currentTarget, 255);
-            SDL_RenderCopy(renderer, currentTarget, nullptr, &dstCur);
+            if (dt >= 1) { animatingOverlay = false; }
+            int offOld = int(-0.5f * WIDTH * SCALE * v);
+            int offNew = int(WIDTH * SCALE * (1 - v));
+            SDL_Rect dstOld = {offOld, 0, WIDTH*SCALE, HEIGHT*SCALE};
+            SDL_RenderCopy(renderer, nextTarget, nullptr, &dstOld);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, Uint8(OVERLAY_MAX_ALPHA * v * 255));
-            SDL_Rect cover = {offCur, 0, WIDTH*SCALE, HEIGHT*SCALE};
+            SDL_Rect cover = {offOld, 0, WIDTH*SCALE, HEIGHT*SCALE};
             SDL_RenderFillRect(renderer, &cover);
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
-            SDL_Rect dstNext = {offNext, 0, WIDTH*SCALE, HEIGHT*SCALE};
-            SDL_RenderCopy(renderer, nextTarget, nullptr, &dstNext);
+            SDL_Rect dstNew = {offNew, 0, WIDTH*SCALE, HEIGHT*SCALE};
+            SDL_RenderCopy(renderer, currentTarget, nullptr, &dstNew);
         } else {
             SDL_RenderCopy(renderer, currentTarget, nullptr, nullptr);
         }
