@@ -2,6 +2,9 @@
 
 ### About the serviettUI
 
+> [!CAUTION]
+> The project is currently unstable!
+
 **serviettUI** - is a new declarative UI framework. Create fast UI easily.
 
 ### Dependencies
