@@ -1,7 +1,7 @@
 CXX = clang++
-CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude `sdl2-config --cflags`
-LDFLAGS = `sdl2-config --libs` -lSDL2_ttf
-SRC = src/serviettUI.cpp
+CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude -I/opt/homebrew/include `sdl2-config --cflags`
+LDFLAGS = `sdl2-config --libs` -lSDL2_ttf -lSDL2_gfx
+SRC = $(wildcard src/*.cpp)
 OBJ = $(SRC:.cpp=.o)
 BIN = test/test
 TEST = test/main.cpp
