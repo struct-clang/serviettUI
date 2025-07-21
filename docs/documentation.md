@@ -73,7 +73,7 @@ int main() {
 
 TextField is a framework component that can accept text and also display a tooltip.
 
-To add a `TextField()` element, use the followin syntax:
+To add a `TextField()` element, use the following syntax:
 
 ```
 #include <iostream>
@@ -83,4 +83,16 @@ TextField("Tooltip", myString);
 
 //You can display entered text:
 //Text(myString);
+```
+
+### HStack
+
+HStack is a framework component that arranges elements horizontally.
+
+To add a `HStack()` element, use the following syntax:
+
+```
+HStack([]() {
+    //Your content here
+});
 ```
