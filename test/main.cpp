@@ -2,6 +2,8 @@
 #include <iostream>
 
 int i = 0;
+bool isOn = false;
+std::string myTextFieldText = "";
 
 void AnotherView() {
     Text("Another View");
@@ -23,6 +25,18 @@ void ContentView() {
     Button("Open another View", []() {
         NewView(AnotherView);
     });
+
+    Toggle("Show text below", isOn);
+    Toggle("Show text below", isOn);
+    Toggle("Show text below", isOn);
+    
+
+    if (isOn) {
+        Text("Some text");
+    }
+
+    TextField("Type something", myTextFieldText);
+    Text(myTextFieldText);
 }
 
 int main() {
