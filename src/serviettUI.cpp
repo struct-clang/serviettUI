@@ -29,7 +29,7 @@ static constexpr int TF_PADDING = 10 * SCALE;
 static constexpr int TF_RADIUS = 8 * SCALE;
 static constexpr Uint32 CURSOR_BLINK_INTERVAL = 500;
 
-enum class DescType { Text, Button, Toggle, TextField };
+enum class DescType { Text, Button, Toggle, TextField, HStack };
 struct Descriptor {
     DescType type;
     std::string label;
@@ -87,6 +87,16 @@ void Toggle(const std::string& label, bool& state) {
 void TextField(const std::string& placeholder, std::string& state) {
     curDesc.push_back({DescType::TextField, placeholder, {}, nullptr, &state});
 }
+void HStack(const std::function<void()>& cb) {
+    curDesc.push_back({DescType::HStack, {}, cb, nullptr, nullptr});
+}
+
+static void eraseLastUtf8Char(std::string& s) {
+    if (s.empty()) return;
+    size_t i = s.size() - 1;
+    while (i > 0 && (s[i] & 0xC0) == 0x80) i--;
+    s.erase(i);
+}
 
 void NewView(const std::function<void()>& viewFunc) {
     if (animatingOverlay) return;
@@ -97,28 +107,59 @@ void NewView(const std::function<void()>& viewFunc) {
     SDL_SetRenderTarget(renderer, nextTarget);
     SDL_SetRenderDrawColor(renderer, 255,255,255,255);
     SDL_RenderClear(renderer);
+
     int m = nxtDesc.size();
     std::vector<SDL_Texture*> tex(m);
     std::vector<SDL_Rect> rect(m);
+    std::vector<std::vector<Descriptor>> hchildren(m);
     int totalH = 0;
     for (int i = 0; i < m; i++) {
-        if (nxtDesc[i].type == DescType::Toggle) totalH += 68 + 2*V_PADDING + (i?SPACING:0);
-        else if (nxtDesc[i].type == DescType::TextField) totalH += TF_HEIGHT + (i?SPACING:0);
-        else { int w,h; TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w,&h); totalH += h + (i?SPACING:0); }
-    }
-    int y = (HEIGHT*SCALE - totalH)/2;
-    for (int i = 0; i < m; i++) {
         if (nxtDesc[i].type == DescType::Toggle) {
-            rect[i] = {0, y, WIDTH*SCALE, 68+2*V_PADDING};
-            y += 68+2*V_PADDING+SPACING;
+            totalH += 68 + 2 * V_PADDING + (i ? SPACING : 0);
         } else if (nxtDesc[i].type == DescType::TextField) {
-            rect[i] = {TF_PADDING, y, WIDTH*SCALE-2*TF_PADDING, TF_HEIGHT};
-            y += TF_HEIGHT+SPACING;
+            totalH += TF_HEIGHT + (i ? SPACING : 0);
+        } else if (nxtDesc[i].type == DescType::HStack) {
+            std::vector<Descriptor> tmp;
+            auto save = curDesc; curDesc.clear();
+            nxtDesc[i].cb();
+            tmp = curDesc;
+            curDesc = save;
+            hchildren[i] = tmp;
+            int maxh = 0;
+            for (auto& d : tmp) {
+                int w,h; if (d.type==DescType::Text||d.type==DescType::Button)
+                    TTF_SizeUTF8(font, d.label.c_str(), &w,&h),
+                    maxh = std::max(maxh, h);
+            }
+            totalH += maxh + (i?SPACING:0);
         } else {
             int w,h;
-            TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w,&h);
-            rect[i] = {(WIDTH*SCALE-w)/2, y, w, h};
-            y += h+SPACING;
+            TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w, &h);
+            totalH += h + (i ? SPACING : 0);
+        }
+    }
+    int y = (HEIGHT * SCALE - totalH) / 2;
+    for (int i = 0; i < m; i++) {
+        if (nxtDesc[i].type == DescType::Toggle) {
+            rect[i] = {0, y, WIDTH * SCALE, 68 + 2 * V_PADDING};
+            y += 68 + 2 * V_PADDING + SPACING;
+        } else if (nxtDesc[i].type == DescType::TextField) {
+            rect[i] = {TF_PADDING, y, WIDTH * SCALE - 2 * TF_PADDING, TF_HEIGHT};
+            y += TF_HEIGHT + SPACING;
+        } else if (nxtDesc[i].type == DescType::HStack) {
+            int height = rect[i].h = 0;
+            for (auto& d : hchildren[i]) {
+                int w,h; if (d.type==DescType::Text||d.type==DescType::Button)
+                    TTF_SizeUTF8(font, d.label.c_str(), &w,&h),
+                    height = std::max(height, h);
+            }
+            rect[i] = {0, y, WIDTH * SCALE, height};
+            y += height + SPACING;
+        } else {
+            int w,h;
+            TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w, &h);
+            rect[i] = {(WIDTH * SCALE - w) / 2, y, w, h};
+            y += h + SPACING;
         }
     }
     for (int i = 0; i < m; i++) {
@@ -128,7 +169,7 @@ void NewView(const std::function<void()>& viewFunc) {
             SDL_Surface* surf = TTF_RenderUTF8_Blended(font, nxtDesc[i].label.c_str(), col);
             tex[i] = SDL_CreateTextureFromSurface(renderer, surf);
             SDL_FreeSurface(surf);
-            SDL_SetTextureAlphaMod(tex[i], Uint8(st.alpha*255));
+            SDL_SetTextureAlphaMod(tex[i], Uint8(st.alpha * 255));
             SDL_RenderCopy(renderer, tex[i], nullptr, &rect[i]);
             SDL_DestroyTexture(tex[i]);
         }
@@ -143,39 +184,39 @@ void NewView(const std::function<void()>& viewFunc) {
         if (nxtDesc[i].type == DescType::Toggle) {
             int ty = rect[i].y;
             int w,h;
-            TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w,&h);
+            TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w, &h);
             SDL_Surface* surf = TTF_RenderUTF8_Blended(font, nxtDesc[i].label.c_str(), SDL_Color{0,0,0,255});
             SDL_Texture* labelTex = SDL_CreateTextureFromSurface(renderer, surf);
             SDL_FreeSurface(surf);
-            SDL_Rect lr = {5*SCALE, ty+V_PADDING+(68-h)/2, w, h};
+            SDL_Rect lr = {5 * SCALE, ty + V_PADDING + (68 - h) / 2, w, h};
             SDL_RenderCopy(renderer, labelTex, nullptr, &lr);
             SDL_DestroyTexture(labelTex);
-            int tx = WIDTH*SCALE-5*SCALE-132;
-            int ty0 = ty+V_PADDING;
+            int tx = WIDTH * SCALE - 5 * SCALE - 132;
+            int ty0 = ty + V_PADDING;
             bool& s = *nxtDesc[i].toggleState;
-            int toggW=132, toggH=68, innerPad=5*SCALE;
-            int circleD = toggH-2*innerPad;
+            int toggW = 132, toggH = 68, innerPad = 5 * SCALE;
+            int circleD = toggH - 2 * innerPad;
             SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
             Uint8 r0=0xe9,g0=0xe9,b0=0xeb;
             Uint8 r1=0x69,g1=0xce,b1=0x67;
             Uint8 rc = s?r1:r0, gc = s?g1:g0, bc = s?b1:b0;
-            roundedBoxRGBA(renderer, tx,ty0,tx+toggW-1,ty0+toggH-1, toggH/2, rc,gc,bc,255);
-            int cx = tx+innerPad+(s? (toggW-2*innerPad-circleD):0);
-            int cy = ty0+innerPad;
-            filledCircleRGBA(renderer, cx+circleD/2, cy+circleD/2, circleD/2, 0xff,0xff,0xff,255);
+            roundedBoxRGBA(renderer, tx, ty0, tx + toggW - 1, ty0 + toggH - 1, toggH/2, rc, gc, bc, 255);
+            int cx = tx + innerPad + (s ? (toggW - 2*innerPad - circleD) : 0);
+            int cy = ty0 + innerPad;
+            filledCircleRGBA(renderer, cx + circleD/2, cy + circleD/2, circleD/2, 0xff,0xff,0xff,255);
         }
         if (nxtDesc[i].type == DescType::TextField) {
             State& stf = nxtStates[i];
-            roundedBoxRGBA(renderer, rect[i].x,rect[i].y,rect[i].x+rect[i].w,rect[i].y+rect[i].h, TF_RADIUS, 255,255,255,255);
-            roundedRectangleRGBA(renderer, rect[i].x,rect[i].y,rect[i].x+rect[i].w,rect[i].y+rect[i].h, TF_RADIUS, 0x88,0x88,0x88,255);
+            roundedBoxRGBA(renderer, rect[i].x, rect[i].y, rect[i].x + rect[i].w, rect[i].y + rect[i].h, TF_RADIUS, 255,255,255,255);
+            roundedRectangleRGBA(renderer, rect[i].x, rect[i].y, rect[i].x + rect[i].w, rect[i].y + rect[i].h, TF_RADIUS, 0x88,0x88,0x88,255);
             std::string* txt = nxtDesc[i].textState;
             bool empty = txt->empty();
-            SDL_Color tcol = empty? SDL_Color{0x88,0x88,0x88,255}: SDL_Color{0,0,0,255};
+            SDL_Color tcol = empty?SDL_Color{0x88,0x88,0x88,255}:SDL_Color{0,0,0,255};
             SDL_Surface* surf = TTF_RenderUTF8_Blended(font, (empty?nxtDesc[i].label:*txt).c_str(), tcol);
             SDL_Texture* ttx = SDL_CreateTextureFromSurface(renderer, surf);
             int th = surf->h, tw = surf->w;
             SDL_FreeSurface(surf);
-            SDL_Rect tr = {rect[i].x+5, rect[i].y+(TF_HEIGHT-th)/2, tw, th};
+            SDL_Rect tr = {rect[i].x + 5, rect[i].y + (TF_HEIGHT - th)/2, tw, th};
             SDL_RenderCopy(renderer, ttx, nullptr, &tr);
             SDL_DestroyTexture(ttx);
             Uint32 now = SDL_GetTicks();
@@ -185,10 +226,31 @@ void NewView(const std::function<void()>& viewFunc) {
                     stf.lastBlink = now;
                 }
                 if (stf.showCursor) {
-                    int caretX = empty? rect[i].x+5 : tr.x+tw;
-                    int cy0 = rect[i].y+4;
-                    int cy1 = rect[i].y+TF_HEIGHT-4;
+                    int caretX = empty? rect[i].x + 5 : tr.x + tw;
+                    int cy0 = rect[i].y + 4;
+                    int cy1 = rect[i].y + TF_HEIGHT - 4;
                     SDL_RenderDrawLine(renderer, caretX, cy0, caretX, cy1);
+                }
+            }
+        }
+        if (nxtDesc[i].type == DescType::HStack) {
+            auto& tmp = hchildren[i];
+            int count = tmp.size();
+            if (!count) continue;
+            int slotW = WIDTH * SCALE / count;
+            for (int j = 0; j < count; j++) {
+                auto& d = tmp[j];
+                int x0 = j * slotW;
+                int y0 = rect[i].y;
+                if (d.type == DescType::Text || d.type == DescType::Button) {
+                    SDL_Color col = d.type==DescType::Button? SDL_Color{0,102,255,255} : SDL_Color{0,0,0,255};
+                    SDL_Surface* surf = TTF_RenderUTF8_Blended(font, d.label.c_str(), col);
+                    SDL_Texture* txr = SDL_CreateTextureFromSurface(renderer, surf);
+                    int w,h; SDL_QueryTexture(txr, nullptr, nullptr, &w,&h);
+                    SDL_FreeSurface(surf);
+                    SDL_Rect rr = {x0 + (slotW - w)/2, y0 + (rect[i].h - h)/2, w,h};
+                    SDL_RenderCopy(renderer, txr, nullptr, &rr);
+                    SDL_DestroyTexture(txr);
                 }
             }
         }
@@ -201,13 +263,6 @@ void NewView(const std::function<void()>& viewFunc) {
     overlayStart = SDL_GetTicks();
 }
 
-static void eraseLastUtf8Char(std::string& s) {
-    if (s.empty()) return;
-    size_t i = s.size() - 1;
-    while (i > 0 && (s[i] & 0xC0) == 0x80) i--;
-    s.erase(i);
-}
-
 void View(const std::function<void()>& viewFunc) {
     SDL_Init(SDL_INIT_VIDEO);
     TTF_Init();
@@ -215,8 +270,8 @@ void View(const std::function<void()>& viewFunc) {
     window = SDL_CreateWindow("serviettUI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_ALLOW_HIGHDPI);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
     font = TTF_OpenFont("./Resources/Inter.ttf", 18 * SCALE);
-    currentTarget = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH*SCALE, HEIGHT*SCALE);
-    nextTarget    = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH*SCALE, HEIGHT*SCALE);
+    currentTarget = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH * SCALE, HEIGHT * SCALE);
+    nextTarget    = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH * SCALE, HEIGHT * SCALE);
     SDL_SetTextureBlendMode(currentTarget, SDL_BLENDMODE_BLEND);
     SDL_SetTextureBlendMode(nextTarget,    SDL_BLENDMODE_BLEND);
     curViewFunc = viewFunc;
@@ -241,17 +296,33 @@ void View(const std::function<void()>& viewFunc) {
                 for (auto& d : curDesc) {
                     if (d.type == DescType::Toggle) totalH += 68+2*V_PADDING+SPACING;
                     else if (d.type == DescType::TextField) totalH += TF_HEIGHT+SPACING;
-                    else { int w,h; TTF_SizeUTF8(font, d.label.c_str(), &w,&h); totalH += h+SPACING; }
+                    else if (d.type == DescType::HStack) {
+                        std::vector<Descriptor> tmp;
+                        auto save=curDesc; curDesc.clear();
+                        d.cb();
+                        tmp=curDesc;
+                        curDesc=save;
+                        int hh=0; for (auto& c:tmp){int w,h;TTF_SizeUTF8(font,c.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                        totalH += hh+SPACING;
+                    } else { int w,h;TTF_SizeUTF8(font,d.label.c_str(),&w,&h); totalH+=h+SPACING; }
                 }
                 int yy = (HEIGHT*SCALE - totalH)/2;
                 for (int i = 0; i < (int)curDesc.size(); i++) {
                     if (curDesc[i].type == DescType::TextField) {
                         SDL_Rect r = {TF_PADDING, yy, WIDTH*SCALE-2*TF_PADDING, TF_HEIGHT};
                         yy += TF_HEIGHT+SPACING;
-                        if (downX>=r.x&&downX<=r.x+r.w&&downY>=r.y&&downY<=r.y+r.h) curStates[i].tfFocused = true;
-                        else curStates[i].tfFocused = false;
+                        if (downX>=r.x&&downX<=r.x+r.w&&downY>=r.y&&downY<=r.y+r.h) curStates[i].tfFocused=true;
+                        else curStates[i].tfFocused=false;
                     } else if (curDesc[i].type == DescType::Toggle) yy += 68+2*V_PADDING+SPACING;
-                    else { int w,h; TTF_SizeUTF8(font, curDesc[i].label.c_str(), &w,&h); yy += h+SPACING; }
+                    else if (curDesc[i].type == DescType::HStack) {
+                        std::vector<Descriptor> tmp;
+                        auto save=curDesc; curDesc.clear();
+                        curDesc[i].cb();
+                        tmp=curDesc;
+                        curDesc=save;
+                        int hh=0; for (auto& c:tmp){int w,h;TTF_SizeUTF8(font,c.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                        yy+=hh+SPACING;
+                    } else { int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h); yy+=h+SPACING; }
                 }
             }
             if (e.type == SDL_MOUSEBUTTONUP) {
@@ -283,11 +354,19 @@ void View(const std::function<void()>& viewFunc) {
         int n = curDesc.size();
         std::vector<SDL_Texture*> tex(n);
         std::vector<SDL_Rect> rect(n);
+        std::vector<std::vector<Descriptor>> hchildren(n);
         int totalH = 0;
         for (int i = 0; i < n; i++) {
             if (curDesc[i].type == DescType::Toggle) totalH += 68+2*V_PADDING+(i?SPACING:0);
             else if (curDesc[i].type == DescType::TextField) totalH += TF_HEIGHT+(i?SPACING:0);
-            else { int w,h; TTF_SizeUTF8(font, curDesc[i].label.c_str(), &w,&h); totalH += h+(i?SPACING:0); }
+            else if (curDesc[i].type == DescType::HStack) {
+                auto save=curDesc; curDesc.clear();
+                curDesc[i].cb();
+                hchildren[i]=curDesc;
+                curDesc=save;
+                int hh=0; for(auto&d:hchildren[i]){int w,h;TTF_SizeUTF8(font,d.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                totalH+=hh+(i?SPACING:0);
+            } else { int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h); totalH+=h+(i?SPACING:0); }
         }
         int y = (HEIGHT*SCALE - totalH)/2;
         for (int i = 0; i < n; i++) {
@@ -297,9 +376,12 @@ void View(const std::function<void()>& viewFunc) {
             } else if (curDesc[i].type == DescType::TextField) {
                 rect[i] = {TF_PADDING,y,WIDTH*SCALE-2*TF_PADDING,TF_HEIGHT};
                 y += TF_HEIGHT+SPACING;
+            } else if (curDesc[i].type == DescType::HStack) {
+                int hh=0; for(auto&d:hchildren[i]){int w,h;TTF_SizeUTF8(font,d.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                rect[i] = {0,y,WIDTH*SCALE,hh};
+                y += hh+SPACING;
             } else {
-                int w,h;
-                TTF_SizeUTF8(font, curDesc[i].label.c_str(), &w,&h);
+                int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h);
                 rect[i] = {(WIDTH*SCALE-w)/2,y,w,h};
                 y += h+SPACING;
             }
@@ -312,7 +394,7 @@ void View(const std::function<void()>& viewFunc) {
                 if (d) { curDesc[i].cb(); st.pressed=true;st.animating=false;st.alpha=PRESSED_ALPHA; }
                 if (mouseUp&&st.pressed) { st.pressed=false; if(u){st.animating=true;st.animStart=SDL_GetTicks();}else st.alpha=NORMAL_ALPHA; }
                 if (st.animating) {
-                    float dt = float(SDL_GetTicks()-st.animStart)/ANIM_DURATION;
+                    float dt=float(SDL_GetTicks()-st.animStart)/ANIM_DURATION;
                     if (dt>=1) { st.animating=false; st.alpha=NORMAL_ALPHA; }
                     else { float v=springValues[size_t(dt*(springValues.size()-1))]; st.alpha=PRESSED_ALPHA+(NORMAL_ALPHA-PRESSED_ALPHA)*v; }
                 }
@@ -334,18 +416,16 @@ void View(const std::function<void()>& viewFunc) {
             }
             if (curDesc[i].type == DescType::Toggle) {
                 int ty=rect[i].y;
-                int w,h;
-                TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h);
+                int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h);
                 SDL_Surface* surf=TTF_RenderUTF8_Blended(font,curDesc[i].label.c_str(),SDL_Color{0,0,0,255});
                 SDL_Texture* labelTex=SDL_CreateTextureFromSurface(renderer,surf);
                 SDL_FreeSurface(surf);
                 SDL_Rect lr={5*SCALE,ty+V_PADDING+(68-h)/2,w,h};
                 SDL_RenderCopy(renderer,labelTex,nullptr,&lr);
                 SDL_DestroyTexture(labelTex);
-                int tx=WIDTH*SCALE-5*SCALE-132;
-                int ty0=ty+V_PADDING;
+                int tx=WIDTH*SCALE-5*SCALE-132, ty0=ty+V_PADDING;
                 bool& s=*curDesc[i].toggleState;
-                int toggW=132, toggH=68, innerPad=5*SCALE;
+                int toggW=132,toggH=68,innerPad=5*SCALE;
                 int circleD=toggH-2*innerPad;
                 bool dT=mouseDown&&downX>=tx&&downX<=tx+toggW&&downY>=ty0&&downY<=ty0+toggH;
                 bool uT=mouseUp&&upX>=tx&&upX<=tx+toggW&&upY>=ty0&&upY<=ty0+toggH;
@@ -361,12 +441,9 @@ void View(const std::function<void()>& viewFunc) {
                 SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
                 Uint8 r0=0xe9,g0=0xe9,b0=0xeb;
                 Uint8 r1=0x69,g1=0xce,b1=0x67;
-                Uint8 rc=Uint8(r0+(r1-r0)*vPos);
-                Uint8 gc=Uint8(g0+(g1-g0)*vPos);
-                Uint8 bc=Uint8(b0+(b1-b0)*vPos);
+                Uint8 rc=Uint8(r0+(r1-r0)*vPos), gc=Uint8(g0+(g1-g0)*vPos), bc=Uint8(b0+(b1-b0)*vPos);
                 roundedBoxRGBA(renderer,tx,ty0,tx+toggW-1,ty0+toggH-1,toggH/2,rc,gc,bc,255);
-                int cx=tx+innerPad+int((toggW-2*innerPad-circleD)*vPos);
-                int cy=ty0+innerPad;
+                int cx=tx+innerPad+int((toggW-2*innerPad-circleD)*vPos), cy=ty0+innerPad;
                 filledCircleRGBA(renderer,cx+circleD/2,cy+circleD/2,circleD/2,0xff,0xff,0xff,255);
             }
             if (curDesc[i].type == DescType::TextField) {
@@ -375,7 +452,7 @@ void View(const std::function<void()>& viewFunc) {
                 roundedRectangleRGBA(renderer,rect[i].x,rect[i].y,rect[i].x+rect[i].w,rect[i].y+rect[i].h,TF_RADIUS,0x88,0x88,0x88,255);
                 std::string* txt = curDesc[i].textState;
                 bool empty = txt->empty();
-                SDL_Color tcol = empty?SDL_Color{0x88,0x88,0x88,255}:SDL_Color{0,0,0,255};
+                SDL_Color tcol=empty?SDL_Color{0x88,0x88,0x88,255}:SDL_Color{0,0,0,255};
                 SDL_Surface* surf=TTF_RenderUTF8_Blended(font,(empty?curDesc[i].label:*txt).c_str(),tcol);
                 SDL_Texture* ttx=SDL_CreateTextureFromSurface(renderer,surf);
                 int th=surf->h, tw=surf->w;
@@ -390,37 +467,57 @@ void View(const std::function<void()>& viewFunc) {
                         stf.lastBlink=now;
                     }
                     if(stf.showCursor){
-                        int caretX = empty? rect[i].x+5 : tr.x+tw;
-                        int cy0 = rect[i].y+4;
-                        int cy1 = rect[i].y+TF_HEIGHT-4;
+                        int caretX=empty?rect[i].x+5:tr.x+tw;
+                        int cy0=rect[i].y+4, cy1=rect[i].y+TF_HEIGHT-4;
                         SDL_RenderDrawLine(renderer,caretX,cy0,caretX,cy1);
+                    }
+                }
+            }
+            if (curDesc[i].type == DescType::HStack) {
+                auto& tmp = hchildren[i];
+                int cnt = tmp.size();
+                if (!cnt) continue;
+                int slotW = WIDTH * SCALE / cnt;
+                for (int j = 0; j < cnt; j++) {
+                    auto& d = tmp[j];
+                    int x0 = j * slotW;
+                    int y0 = rect[i].y;
+                    if (d.type == DescType::Text || d.type == DescType::Button) {
+                        SDL_Color col = d.type==DescType::Button?SDL_Color{0,102,255,255}:SDL_Color{0,0,0,255};
+                        SDL_Surface* surf = TTF_RenderUTF8_Blended(font, d.label.c_str(), col);
+                        SDL_Texture* txr = SDL_CreateTextureFromSurface(renderer, surf);
+                        int w,h; SDL_QueryTexture(txr,nullptr,nullptr,&w,&h);
+                        SDL_FreeSurface(surf);
+                        SDL_Rect rr = {x0 + (slotW-w)/2, y0 + (rect[i].h-h)/2, w,h};
+                        SDL_RenderCopy(renderer, txr, nullptr, &rr);
+                        SDL_DestroyTexture(txr);
                     }
                 }
             }
         }
         SDL_SetRenderTarget(renderer,nullptr);
         SDL_RenderClear(renderer);
-        if(animatingOverlay){
-            float dt=float(SDL_GetTicks()-overlayStart)/ANIM_DURATION;
-            float t=dt>1?1:dt;
-            float v2=springValues[size_t(t*(springValues.size()-1))];
-            if(dt>=1) animatingOverlay=false;
-            int offOld=int(-0.5f*WIDTH*SCALE*v2);
-            int offNew=int(WIDTH*SCALE*(1-v2));
-            SDL_Rect dstOld={offOld,0,WIDTH*SCALE,HEIGHT*SCALE};
+        if (animatingOverlay) {
+            float dt = float(SDL_GetTicks() - overlayStart)/ANIM_DURATION;
+            float t = dt>1?1:dt;
+            float v2 = springValues[size_t(t*(springValues.size()-1))];
+            if (dt>=1) animatingOverlay = false;
+            int offOld = int(-0.5f * WIDTH * SCALE * v2);
+            int offNew = int(WIDTH * SCALE * (1 - v2));
+            SDL_Rect dstOld = {offOld,0,WIDTH*SCALE,HEIGHT*SCALE};
             SDL_RenderCopy(renderer,nextTarget,nullptr,&dstOld);
             SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_BLEND);
             SDL_SetRenderDrawColor(renderer,0,0,0,Uint8(OVERLAY_MAX_ALPHA*v2*255));
             SDL_RenderFillRect(renderer,&dstOld);
             SDL_SetRenderDrawBlendMode(renderer,SDL_BLENDMODE_NONE);
-            SDL_Rect dstNew={offNew,0,WIDTH*SCALE,HEIGHT*SCALE};
+            SDL_Rect dstNew = {offNew,0,WIDTH*SCALE,HEIGHT*SCALE};
             SDL_RenderCopy(renderer,currentTarget,nullptr,&dstNew);
         } else {
             SDL_RenderCopy(renderer,currentTarget,nullptr,nullptr);
         }
         SDL_RenderPresent(renderer);
         Uint32 elapsed = SDL_GetTicks() - start;
-        if(elapsed < FRAME_DELAY) SDL_Delay(FRAME_DELAY - elapsed);
+        if (elapsed < FRAME_DELAY) SDL_Delay(FRAME_DELAY - elapsed);
     }
     SDL_StopTextInput();
     SDL_DestroyTexture(nextTarget);
