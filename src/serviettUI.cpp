@@ -26,7 +26,7 @@ static constexpr float OVERLAY_MAX_ALPHA = 0.6f;
 static constexpr float ANIM_DURATION = 350.0f;
 static constexpr int TF_HEIGHT = 32 * SCALE;
 static constexpr int TF_PADDING = 10 * SCALE;
-static constexpr int TF_RADIUS = 10 * SCALE;
+static constexpr int TF_RADIUS = 8 * SCALE;
 static constexpr Uint32 CURSOR_BLINK_INTERVAL = 500;
 
 enum class DescType { Text, Button, Toggle, TextField };
