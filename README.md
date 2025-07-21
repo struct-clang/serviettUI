@@ -7,15 +7,6 @@
 
 **serviettUI** - is a new declarative UI framework. Create fast UI easily.
 
-### Dependencies
-
-serviettUI has these dependencies:
-
-```
-sdl2
-sdl2_ttf
-```
-
 ### UI
 
 The design was inspired by SwiftUI and Human Interface Guidelines.
