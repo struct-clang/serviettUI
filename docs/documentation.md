@@ -68,3 +68,19 @@ int main() {
     return 0;
 }
 ```
+
+### TextField
+
+TextField is a framework component that can accept text and also display a tooltip.
+
+To add a `TextField()` element, use the followin syntax:
+
+```
+#include <iostream>
+
+std::string myString = "";
+TextField("Tooltip", myString);
+
+//You can display entered text:
+//Text(myString);
+```
