@@ -37,6 +37,11 @@ void ContentView() {
 
     TextField("Type something", myTextFieldText);
     Text(myTextFieldText);
+
+    HStack([]() {
+        Text("Leading");
+        Text("Trailing");
+    });
 }
 
 int main() {
