@@ -25,6 +25,10 @@ Text is a framework component that displays text content. It is initially center
 
 To add a `Text()` element, insert `Text("Your text to display");` into the View. The data type must be a string. You can also use a variable instead of hardcoding the text.
 
+### Title
+
+Same as Text, but bigger font
+
 ### Button
 
 Button is a framework component that displays text in color `#0066FF` and can trigger a function when pressed.
