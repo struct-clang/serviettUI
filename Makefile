@@ -1,6 +1,6 @@
 CXX = clang++
 CXXFLAGS = -std=c++17 -Wall -Wextra -Iinclude -I/opt/homebrew/include `sdl2-config --cflags`
-LDFLAGS = `sdl2-config --libs` -lSDL2_ttf -lSDL2_gfx
+LDFLAGS = `sdl2-config --libs` -lSDL2_ttf -lSDL2_gfx -lSDL2_image
 SRC = $(wildcard src/*.cpp)
 OBJ = $(SRC:.cpp=.o)
 BIN = test/test

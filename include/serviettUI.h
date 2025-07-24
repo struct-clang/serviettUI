@@ -7,6 +7,7 @@
 #include <functional>
 
 void Text(const std::string& text);
+void Title(const std::string& text);
 void Button(const std::string& label, const std::function<void()>& cb);
 void Toggle(const std::string& label, bool& state);
 void TextField(const std::string& placeholder, std::string& state);

@@ -11,6 +11,7 @@
 static SDL_Window* window = nullptr;
 static SDL_Renderer* renderer = nullptr;
 static TTF_Font* font = nullptr;
+static TTF_Font* titleFont = nullptr;
 static SDL_Texture* currentTarget = nullptr;
 static SDL_Texture* nextTarget = nullptr;
 static std::vector<float> springValues;
@@ -30,7 +31,7 @@ static constexpr int TF_PADDING = 10 * SCALE;
 static constexpr int TF_RADIUS = 8 * SCALE;
 static constexpr Uint32 CURSOR_BLINK_INTERVAL = 500;
 
-enum class DescType { Text, Button, Toggle, TextField, HStack, Image };
+enum class DescType { Text, Title, Button, Toggle, TextField, HStack, Image };
 struct Descriptor {
     DescType type;
     std::string label;
@@ -79,19 +80,22 @@ static std::vector<float> loadSpring(const char* path) {
 }
 
 void Text(const std::string& text) {
-    curDesc.push_back({DescType::Text, text, {}, nullptr, nullptr});
+    curDesc.push_back({DescType::Text, text, {}, nullptr, nullptr, 0, 0});
+}
+void Title(const std::string& text) {
+    curDesc.push_back({DescType::Title, text, {}, nullptr, nullptr, 0, 0});
 }
 void Button(const std::string& label, const std::function<void()>& cb) {
-    curDesc.push_back({DescType::Button, label, cb, nullptr, nullptr});
+    curDesc.push_back({DescType::Button, label, cb, nullptr, nullptr, 0, 0});
 }
 void Toggle(const std::string& label, bool& state) {
-    curDesc.push_back({DescType::Toggle, label, {}, &state, nullptr});
+    curDesc.push_back({DescType::Toggle, label, {}, &state, nullptr, 0, 0});
 }
 void TextField(const std::string& placeholder, std::string& state) {
-    curDesc.push_back({DescType::TextField, placeholder, {}, nullptr, &state});
+    curDesc.push_back({DescType::TextField, placeholder, {}, nullptr, &state, 0, 0});
 }
 void HStack(const std::function<void()>& cb) {
-    curDesc.push_back({DescType::HStack, {}, cb, nullptr, nullptr});
+    curDesc.push_back({DescType::HStack, {}, cb, nullptr, nullptr, 0, 0});
 }
 void Image(const std::string& path, int w, int h) {
     curDesc.push_back({DescType::Image, path, {}, nullptr, nullptr, w, h});
@@ -132,13 +136,18 @@ void NewView(const std::function<void()>& viewFunc) {
             curDesc = save;
             int maxh = 0;
             for (auto& d : tmp) {
-                int w,h; if (d.type==DescType::Text||d.type==DescType::Button)
-                    TTF_SizeUTF8(font, d.label.c_str(), &w,&h),
+                int w,h;
+                if (d.type==DescType::Text||d.type==DescType::Button||d.type==DescType::Title)
+                    TTF_SizeUTF8(d.type==DescType::Title?titleFont:font, d.label.c_str(), &w,&h),
                     maxh = std::max(maxh, h);
             }
             totalH += maxh + (i?SPACING:0);
         } else if (nxtDesc[i].type == DescType::Image) {
             totalH += nxtDesc[i].imgH + (i ? SPACING : 0);
+        } else if (nxtDesc[i].type == DescType::Title) {
+            int w, h;
+            TTF_SizeUTF8(titleFont, nxtDesc[i].label.c_str(), &w, &h);
+            totalH += h + (i ? SPACING : 0);
         } else {
             int w,h;
             TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w, &h);
@@ -154,15 +163,16 @@ void NewView(const std::function<void()>& viewFunc) {
             rect[i] = {TF_PADDING, y, WIDTH * SCALE - 2 * TF_PADDING, TF_HEIGHT};
             y += TF_HEIGHT + SPACING;
         } else if (nxtDesc[i].type == DescType::HStack) {
-            int height = rect[i].h = 0;
+            int height = 0;
             std::vector<Descriptor> tmp;
             auto save = curDesc; curDesc.clear();
             nxtDesc[i].cb();
             tmp = curDesc;
             curDesc = save;
             for (auto& d : tmp) {
-                int w,h; if (d.type==DescType::Text||d.type==DescType::Button)
-                    TTF_SizeUTF8(font, d.label.c_str(), &w,&h),
+                int w,h;
+                if (d.type==DescType::Text||d.type==DescType::Button||d.type==DescType::Title)
+                    TTF_SizeUTF8(d.type==DescType::Title?titleFont:font, d.label.c_str(), &w,&h),
                     height = std::max(height, h);
             }
             rect[i] = {0, y, WIDTH * SCALE, height};
@@ -170,6 +180,11 @@ void NewView(const std::function<void()>& viewFunc) {
         } else if (nxtDesc[i].type == DescType::Image) {
             rect[i] = {(WIDTH * SCALE - nxtDesc[i].imgW) / 2, y, nxtDesc[i].imgW, nxtDesc[i].imgH};
             y += nxtDesc[i].imgH + SPACING;
+        } else if (nxtDesc[i].type == DescType::Title) {
+            int w,h;
+            TTF_SizeUTF8(titleFont, nxtDesc[i].label.c_str(), &w, &h);
+            rect[i] = {(WIDTH * SCALE - w) / 2, y, w, h};
+            y += h + SPACING;
         } else {
             int w,h;
             TTF_SizeUTF8(font, nxtDesc[i].label.c_str(), &w, &h);
@@ -190,6 +205,13 @@ void NewView(const std::function<void()>& viewFunc) {
         } else if (nxtDesc[i].type == DescType::Text) {
             SDL_Color col = {0,0,0,255};
             SDL_Surface* surf = TTF_RenderUTF8_Blended(font, nxtDesc[i].label.c_str(), col);
+            tex[i] = SDL_CreateTextureFromSurface(renderer, surf);
+            SDL_FreeSurface(surf);
+            SDL_RenderCopy(renderer, tex[i], nullptr, &rect[i]);
+            SDL_DestroyTexture(tex[i]);
+        } else if (nxtDesc[i].type == DescType::Title) {
+            SDL_Color col = {0,0,0,255};
+            SDL_Surface* surf = TTF_RenderUTF8_Blended(titleFont, nxtDesc[i].label.c_str(), col);
             tex[i] = SDL_CreateTextureFromSurface(renderer, surf);
             SDL_FreeSurface(surf);
             SDL_RenderCopy(renderer, tex[i], nullptr, &rect[i]);
@@ -253,9 +275,10 @@ void NewView(const std::function<void()>& viewFunc) {
                 auto& d = tmp[j];
                 int x0 = j * slotW;
                 int y0 = rect[i].y;
-                if (d.type == DescType::Text || d.type == DescType::Button) {
+                if (d.type == DescType::Text || d.type == DescType::Button || d.type == DescType::Title) {
                     SDL_Color col = d.type==DescType::Button? SDL_Color{0,102,255,255} : SDL_Color{0,0,0,255};
-                    SDL_Surface* surf = TTF_RenderUTF8_Blended(font, d.label.c_str(), col);
+                    TTF_Font* f = d.type==DescType::Title? titleFont : font;
+                    SDL_Surface* surf = TTF_RenderUTF8_Blended(f, d.label.c_str(), col);
                     SDL_Texture* txr = SDL_CreateTextureFromSurface(renderer, surf);
                     int w,h; SDL_QueryTexture(txr, nullptr, nullptr, &w,&h);
                     SDL_FreeSurface(surf);
@@ -288,6 +311,7 @@ void View(const std::function<void()>& viewFunc) {
     window = SDL_CreateWindow("serviettUI", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_ALLOW_HIGHDPI);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
     font = TTF_OpenFont("./Resources/Inter.ttf", 18 * SCALE);
+    titleFont = TTF_OpenFont("./Resources/Inter.ttf", 36 * SCALE);
     currentTarget = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH * SCALE, HEIGHT * SCALE);
     nextTarget    = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, WIDTH * SCALE, HEIGHT * SCALE);
     SDL_SetTextureBlendMode(currentTarget, SDL_BLENDMODE_BLEND);
@@ -320,10 +344,24 @@ void View(const std::function<void()>& viewFunc) {
                         d.cb();
                         tmp=curDesc;
                         curDesc=save;
-                        int hh=0; for (auto& c:tmp){int w,h;TTF_SizeUTF8(font,c.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                        int hh=0;
+                        for (auto& c:tmp){
+                            int w,h;
+                            if (c.type==DescType::Text||c.type==DescType::Button||c.type==DescType::Title)
+                                TTF_SizeUTF8(c.type==DescType::Title?titleFont:font, c.label.c_str(), &w,&h),
+                                hh=std::max(hh,h);
+                        }
                         totalH += hh+SPACING;
                     } else if (d.type == DescType::Image) totalH += d.imgH + SPACING;
-                    else { int w,h;TTF_SizeUTF8(font,d.label.c_str(),&w,&h); totalH+=h+SPACING; }
+                    else if (d.type == DescType::Title) {
+                        int w,h;
+                        TTF_SizeUTF8(titleFont, d.label.c_str(), &w,&h);
+                        totalH += h+SPACING;
+                    } else {
+                        int w,h;
+                        TTF_SizeUTF8(font,d.label.c_str(),&w,&h);
+                        totalH+=h+SPACING;
+                    }
                 }
                 int yy = (HEIGHT*SCALE - totalH)/2;
                 for (int i = 0; i < (int)curDesc.size(); i++) {
@@ -339,11 +377,25 @@ void View(const std::function<void()>& viewFunc) {
                         curDesc[i].cb();
                         tmp=curDesc;
                         curDesc=save;
-                        int hh=0; for (auto& c:tmp){int w,h;TTF_SizeUTF8(font,c.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                        int hh=0;
+                        for (auto& c:tmp){
+                            int w,h;
+                            if (c.type==DescType::Text||c.type==DescType::Button||c.type==DescType::Title)
+                                TTF_SizeUTF8(c.type==DescType::Title?titleFont:font, c.label.c_str(), &w,&h),
+                                hh=std::max(hh,h);
+                        }
                         yy+=hh+SPACING;
                     } else if (curDesc[i].type == DescType::Image) {
                         yy += curDesc[i].imgH + SPACING;
-                    } else { int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h); yy+=h+SPACING; }
+                    } else if (curDesc[i].type == DescType::Title) {
+                        int w,h;
+                        TTF_SizeUTF8(titleFont, curDesc[i].label.c_str(), &w,&h);
+                        yy += h+SPACING;
+                    } else {
+                        int w,h;
+                        TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h);
+                        yy+=h+SPACING;
+                    }
                 }
             }
             if (e.type == SDL_MOUSEBUTTONUP) {
@@ -385,10 +437,20 @@ void View(const std::function<void()>& viewFunc) {
                 curDesc[i].cb();
                 hchildren[i]=curDesc;
                 curDesc=save;
-                int hh=0; for(auto&d:hchildren[i]){int w,h;TTF_SizeUTF8(font,d.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                int hh=0;
+                for(auto&d:hchildren[i]){
+                    int w,h;
+                    if (d.type==DescType::Text||d.type==DescType::Button||d.type==DescType::Title)
+                        TTF_SizeUTF8(d.type==DescType::Title?titleFont:font, d.label.c_str(), &w,&h),
+                        hh=std::max(hh,h);
+                }
                 totalH+=hh+(i?SPACING:0);
             } else if (curDesc[i].type == DescType::Image) totalH += curDesc[i].imgH + (i?SPACING:0);
-            else { int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h); totalH+=h+(i?SPACING:0); }
+            else if (curDesc[i].type == DescType::Title) {
+                int w,h;
+                TTF_SizeUTF8(titleFont,curDesc[i].label.c_str(),&w,&h);
+                totalH+=h+(i?SPACING:0);
+            } else { int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h); totalH+=h+(i?SPACING:0); }
         }
         int y = (HEIGHT*SCALE - totalH)/2;
         for (int i = 0; i < n; i++) {
@@ -399,14 +461,26 @@ void View(const std::function<void()>& viewFunc) {
                 rect[i] = {TF_PADDING,y,WIDTH*SCALE-2*TF_PADDING,TF_HEIGHT};
                 y += TF_HEIGHT+SPACING;
             } else if (curDesc[i].type == DescType::HStack) {
-                int hh=0; for(auto&d:hchildren[i]){int w,h;TTF_SizeUTF8(font,d.label.c_str(),&w,&h);hh=std::max(hh,h);}
+                int hh=0;
+                for(auto&d:hchildren[i]){
+                    int w,h;
+                    if (d.type==DescType::Text||d.type==DescType::Button||d.type==DescType::Title)
+                        TTF_SizeUTF8(d.type==DescType::Title?titleFont:font, d.label.c_str(), &w,&h),
+                        hh=std::max(hh,h);
+                }
                 rect[i] = {0,y,WIDTH*SCALE,hh};
                 y += hh+SPACING;
             } else if (curDesc[i].type == DescType::Image) {
                 rect[i] = {(WIDTH*SCALE - curDesc[i].imgW)/2, y, curDesc[i].imgW, curDesc[i].imgH};
                 y += curDesc[i].imgH + SPACING;
+            } else if (curDesc[i].type == DescType::Title) {
+                int w,h;
+                TTF_SizeUTF8(titleFont,curDesc[i].label.c_str(),&w,&h);
+                rect[i] = {(WIDTH*SCALE-w)/2,y,w,h};
+                y += h+SPACING;
             } else {
-                int w,h;TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h);
+                int w,h;
+                TTF_SizeUTF8(font,curDesc[i].label.c_str(),&w,&h);
                 rect[i] = {(WIDTH*SCALE-w)/2,y,w,h};
                 y += h+SPACING;
             }
@@ -433,6 +507,13 @@ void View(const std::function<void()>& viewFunc) {
             } else if (curDesc[i].type == DescType::Text) {
                 SDL_Color col={0,0,0,255};
                 SDL_Surface* surf=TTF_RenderUTF8_Blended(font,curDesc[i].label.c_str(),col);
+                tex[i]=SDL_CreateTextureFromSurface(renderer,surf);
+                SDL_FreeSurface(surf);
+                SDL_RenderCopy(renderer,tex[i],nullptr,&rect[i]);
+                SDL_DestroyTexture(tex[i]);
+            } else if (curDesc[i].type == DescType::Title) {
+                SDL_Color col={0,0,0,255};
+                SDL_Surface* surf=TTF_RenderUTF8_Blended(titleFont,curDesc[i].label.c_str(),col);
                 tex[i]=SDL_CreateTextureFromSurface(renderer,surf);
                 SDL_FreeSurface(surf);
                 SDL_RenderCopy(renderer,tex[i],nullptr,&rect[i]);
@@ -503,9 +584,10 @@ void View(const std::function<void()>& viewFunc) {
                     auto& d = tmp[j];
                     int x0 = j * slotW;
                     int y0 = rect[i].y;
-                    if (d.type == DescType::Text || d.type == DescType::Button) {
+                    if (d.type == DescType::Text || d.type == DescType::Button || d.type == DescType::Title) {
                         SDL_Color col = d.type==DescType::Button?SDL_Color{0,102,255,255}:SDL_Color{0,0,0,255};
-                        SDL_Surface* surf = TTF_RenderUTF8_Blended(font, d.label.c_str(), col);
+                        TTF_Font* f = d.type==DescType::Title? titleFont : font;
+                        SDL_Surface* surf = TTF_RenderUTF8_Blended(f, d.label.c_str(), col);
                         SDL_Texture* txr = SDL_CreateTextureFromSurface(renderer, surf);
                         int w,h; SDL_QueryTexture(txr,nullptr,nullptr,&w,&h);
                         SDL_FreeSurface(surf);
@@ -549,6 +631,7 @@ void View(const std::function<void()>& viewFunc) {
     SDL_StopTextInput();
     SDL_DestroyTexture(nextTarget);
     SDL_DestroyTexture(currentTarget);
+    TTF_CloseFont(titleFont);
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

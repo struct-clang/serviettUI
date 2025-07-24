@@ -20,6 +20,7 @@ void AnotherView() {
 }
 
 void ContentView() {
+    Title("Welcome to ServiettUI");
     Text("Hello, World!");
 
     Button("Add +1 to number below", []() {
