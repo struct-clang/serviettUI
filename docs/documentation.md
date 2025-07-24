@@ -1,7 +1,7 @@
 # Complete documentation for the serviettUI framework
 
 > [!WARNING]
-> First you need to install all dependencies: `clang, sdl2, sdl2_ttf, sdl2_gfx` and also clone this repository.
+> First you need to install all dependencies: `clang, sdl2, sdl2_ttf, sdl2_gfx, sdl2_image` and also clone this repository.
 
 ## Building library and project
 
@@ -95,4 +95,14 @@ To add a `HStack()` element, use the following syntax:
 HStack([]() {
     //Your content here
 });
+```
+
+### Image
+
+Image is a framework component that shows images.
+
+To add a `Image()` element, put your image into the `Resources/` folder use the following syntax:
+
+```
+Image("ImageName.png", width, height);
 ```
